@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Tracer</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --accent: #38bdf8;
+    --green: #4ade80; --yellow: #facc15; --red: #f87171; --text: #e2e8f0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
+  body { background: var(--bg); color: var(--text); padding: 16px; max-width: 640px; margin: auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .sub { color: #94a3b8; font-size: .85rem; margin-bottom: 16px; }
+  .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .shift-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: .85rem; }
+  .shift-morning { background: #fde68a; color: #78350f; }
+  .shift-evening { background: #fca5a5; color: #7f1d1d; }
+  .shift-night { background: #a5b4fc; color: #1e1b4b; }
+  .off { background: #334155; color: #94a3b8; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  td { padding: 6px 4px; border-bottom: 1px solid #334155; }
+  td:first-child { color: var(--accent); white-space: nowrap; width: 110px; }
+  .row-done td { text-decoration: line-through; opacity: .5; }
+  .progress-bar { background: #334155; border-radius: 8px; height: 10px; overflow: hidden; margin: 6px 0; }
+  .progress-fill { height: 100%; background: var(--green); transition: width .3s; }
+  .track-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+  .btn { background: var(--accent); color: #0f172a; border: none; padding: 6px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  .btn.small { padding: 4px 10px; font-size: .8rem; }
+  .btn.done { background: var(--green); }
+  .shift-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab { padding: 6px 12px; border-radius: 8px; background: var(--card); cursor: pointer; font-size: .8rem; border: 1px solid #334155; }
+  .tab.active { background: var(--accent); color: #0f172a; font-weight: 700; }
+  .check { cursor: pointer; }
+  .water-btns { display: flex; gap: 6px; }
+  .stats { display: flex; gap: 10px; text-align: center; }
+  .stat { flex: 1; background: var(--card); border-radius: 12px; padding: 10px; }
+  .stat b { font-size: 1.2rem; display: block; color: var(--accent); }
+  .stat span { font-size: .7rem; color: #94a3b8; }
+  .note { font-size: .75rem; color: #94a3b8; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>📋 Daily Tracer</h1>
+  <p class="sub" id="today"></p>
+
+  <div class="stats">
+    <div class="stat"><b id="statWater">0/4</b><span>WATER (L)</span></div>
+    <div class="stat"><b id="statSteps">0/10k</b><span>STEPS</span></div>
+    <div class="stat"><b id="statStudy">0/120</b><span>STUDY (MIN)</span></div>
+  </div>
+
+  <div class="card">
+    <div class="shift-tabs" id="tabs"></div>
+    <span class="shift-badge" id="badge"></span>
+    <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+    <p class="note" id="progText"></p>
+    <table id="sched"></table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px">💧 Water — <span id="wTotal">0.0</span> / 4.0 L</h3>
+    <div class="water-btns">
+      <button class="btn small" onclick="addWater(0.25)">+250ml</button>
+      <button class="btn small" onclick="addWater(0.5)">+500ml</button>
+      <button class="btn small" onclick="addWater(0.75)">+750ml</button>
+      <button class="btn small" style="background:var(--red);color:#fff" onclick="resetKey('water')">Reset</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px">👟 Steps</h3>
+    <div class="water-btns">
+      <button class="btn small" onclick="addSteps(1000)">+1,000</button>
+      <button class="btn small" onclick="addSteps(2000)">+2,000</button>
+      <button class="btn small" style="background:var(--red);color:#fff" onclick="resetKey('steps')">Reset</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px">📚 DevOps Study — <span id="sTotal">0</span> min</h3>
+    <div class="water-btns">
+      <button class="btn small" onclick="addStudy(30)">+30 min</button>
+      <button class="btn small" onclick="addStudy(60)">+60 min</button>
+      <button class="btn small" style="background:var(--red);color:#fff" onclick="resetKey('study')">Reset</button>
+    </div>
+    <p class="note">Deload weeks: halve everything. Bad day = 30 min study + 20 min walk + sleep on time.</p>
+  </div>
+
+<script>
+const SHIFTS = {
+  morning: { label: "🌅 Morning 05:30–14:30", cls: "shift-morning", range: [5.5, 14.5],
+    sched: [
+      ["20:30", "Sleep (night before)"],
+      ["04:15", "Wake, 500ml water, stretch"],
+      ["04:30", "Ready, breakfast, commute (~1k steps)"],
+      ["05:30", "WORK — walking breaks x3"],
+      ["14:30", "Commute home, 250ml"],
+      ["15:00", "Main meal + rest"],
+      ["15:30", "Power nap (max 20 min)"],
+      ["16:00", "GYM (Mon/Tue/Thu/Fri)"],
+      ["17:15", "Shower + early dinner"],
+      ["18:00", "DevOps deep study (90 min + 15 notes)"],
+      ["19:45", "Easy walk (~1k steps)"],
+      ["20:00", "Wind down — no screens"],
+      ["20:30", "SLEEP"]
+    ]},
+  evening: { label: "🌇 Evening 12:30–21:00", cls: "shift-evening", range: [12.5, 21],
+    sched: [
+      ["02:30", "Sleep (night before)"],
+      ["10:45", "Wake, 500ml water, stretch"],
+      ["11:00", "Ready, breakfast, commute (~1k steps)"],
+      ["12:30", "WORK — walking breaks x3"],
+      ["21:00", "Commute home, 250ml"],
+      ["21:30", "Main meal + rest"],
+      ["22:00", "DevOps deep study (90 min + 15 notes)"],
+      ["23:45", "Easy walk (~1k steps)"],
+      ["00:15", "Wind down — no screens"],
+      ["02:30", "SLEEP"]
+    ]},
+  night: { label: "🌙 Night 21:00–06:00", cls: "shift-night", range: [21, 30],
+    sched: [
+      ["13:30", "Sleep (afternoon before)"],
+      ["19:15", "Wake, 500ml water, stretch"],
+      ["19:30", "Ready, main meal, commute (~1k steps)"],
+      ["21:00", "WORK — walking breaks x3"],
+      ["06:00", "Commute home"],
+      ["06:45", "Light meal (not heavy)"],
+      ["07:15", "Short study (30–45 min, optional)"],
+      ["08:00", "Blackout room, earplugs, SLEEP"],
+      ["13:30", "SLEEP (7h protected)"]
+    ]},
+  off: { label: "🛌 Off Day", cls: "off", range: [-1, -1],
+    sched: [
+      ["06:30", "Wake within 1h of usual, walk 4k steps"],
+      ["08:00", "Optional gym (5th session)"],
+      ["09:30", "Main project block (3.5h)"],
+      ["13:00", "Free: meals, errands, social"],
+      ["17:00", "Sunday: weekly review + plan next week"],
+      ["21:30", "Bedtime (earlier before work day)"]
+    ]}
+};
+
+function nowH() { const d = new Date(); return d.getHours() + d.getMinutes()/60; }
+function detectShift() {
+  const h = nowH();
+  if (h >= 5.5 && h < 12.5) return "morning";
+  if (h >= 12.5 && h < 21) return "evening";
+  if (h >= 21 || h < 5.5) return "night";
+  return "night";
+}
+function todayKey() { return new Date().toISOString().slice(0,10); }
+function load() {
+  const d = JSON.parse(localStorage.getItem("tracer") || "{}");
+  if (d.day !== todayKey()) { d = { day: todayKey(), water:0, steps:0, study:0, done:[] }; save(d); }
+  return d;
+}
+function save(d) { localStorage.setItem("tracer", JSON.stringify(d)); }
+
+let current = load().shiftOverride || detectShift();
+let data = load();
+
+function render() {
+  document.getElementById("today").textContent =
+    new Date().toLocaleDateString(undefined, { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  const tabs = document.getElementById("tabs");
+tabs.innerHTML = "";
+  Object.keys(SHIFTS).forEach(k => {
+    const t = document.createElement("div");
+    t.className = "tab" + (k === current ? " active" : "");
+    t.textContent = SHIFTS[k].label;
+    t.onclick = () => { current = k; data.shiftOverride = k; save(data); render(); };
+    tabs.appendChild(t);
+  });
+
+  const s = SHIFTS[current];
+  const badge = document.getElementById("badge");
+  badge.textContent = s.label;
+  badge.className = "shift-badge " + s.cls;
+
+  // Find active row based on current time
+  const h = nowH();
+  const toMin = str => { const [hh,mm] = str.split(":").map(Number); return hh*60 + mm; };
+  const nowMin = h * 60;
+  let activeIdx = -1;
+
+  // Build start times in minutes; rows after midnight (e.g. 00:15, 02:30 in evening
+  // shift, or 01:00-05:00 rows in night shift) get +24h so they sort correctly.
+  const starts = s.sched.map((r, i) => {
+    let m = toMin(r[0]);
+    // If previous row's time is later in the day than this one, we've wrapped past midnight
+    if (i > 0) {
+      const prev = toMin(s.sched[i-1][0]);
+      if (m < prev) m += 24*60;
+    }
+    return m;
+  });
+
+  for (let i = 0; i < starts.length; i++) {
+    const end = (i === starts.length - 1) ? starts[i] + 24*60 : starts[i+1];
+    if (nowMin >= starts[i] && nowMin < end) { activeIdx = i; break; }
+  }
+
+  // Schedule table
+  const tbl = document.getElementById("sched");
+  tbl.innerHTML = "";
+  s.sched.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    if (data.done.includes(current + i)) tr.className = "row-done";
+    if (i === activeIdx) tr.style.background = "#334155";
+
+    const tdTime = document.createElement("td");
+    tdTime.textContent = r[0];
+
+    const tdAct = document.createElement("td");
+    tdAct.textContent = r[1];
+
+    const tdChk = document.createElement("td");
+    tdChk.style.textAlign = "right";
+    const chk = document.createElement("span");
+    chk.className = "check";
+    chk.textContent = data.done.includes(current + i) ? "✅" : "⬜";
+    chk.onclick = () => {
+      const key = current + i;
+      if (data.done.includes(key)) data.done = data.done.filter(x => x !== key);
+      else data.done.push(key);
+      save(data); render();
+    };
+    tdChk.appendChild(chk);
+
+    tr.appendChild(tdTime);
+    tr.appendChild(tdAct);
+    tr.appendChild(tdChk);
+    tbl.appendChild(tr);
+  });
+
+  // Progress
+  const doneCount = s.sched.filter((_, i) => data.done.includes(current + i)).length;
+  const pct.round(doneCount / s.sched.length * 100);
+  document.getElementById("prog").style.width = pct + "%";
+  document.getElementById("progText").textContent = doneCount + " of " + s.sched.length + " tasks done (" + pct + "%)";
+
+  // Stats
+  document.getElementById("statWater").textContent = data.water.toFixed(2).replace(/\.?0+$/,"") + "/4";
+  document.getElementById("statSteps").textContent = (data.steps/1000).toFixed(1) + "k/10k";
+  document.getElementById("statStudy").textContent = data.study + "/120";
+  document.getElementById("wTotal").textContent = data.water.toFixed(2).replace(/\.?0+$/,"");
+  document.getElementById("sTotal").textContent = data.study;
+}
+
+function addWater(l)  { data.water  = Math.min(6, +(data.water + l).toFixed(2)); save(data); render(); }
+function addSteps(n)  { data.steps += n; save(data); render(); }
+function addStudy(m)  { data.study += m; save(data); render(); }
+function resetKey(k)  { data[k] = 0; save(data); render(); }
+
+render();
+setInterval(render, 60000); // refresh active row every minute
+</script>
+</body>
+</html>
